@@ -1,0 +1,16 @@
+<div>
+    <p>
+        Specify the repository owner. Depending on how you are accessing the repository:
+    </p>
+    <ul>
+        <li>
+        SSH - <code>git@bitbucket.org:<b>example-owner</b>/example-repo.git</code>
+        </li>
+        <li>
+        HTTPS - <code>https://username@bitbucket.org/<b>example-owner</b>/example-repo.git</code>
+        </li>
+    </ul>
+    <p>
+        You can use environment variables or build parameters like <code>$YOUR_VARIABLE</code>.
+    </p>
+</div>
