@@ -19,8 +19,7 @@ public class BuildStatus {
 
 
   private String revision;
-
-  private String status;
+  private String state;
   private String key;
   private String name;
   private String url;
@@ -47,8 +46,8 @@ public class BuildStatus {
     return key;
   }
 
-  public String getStatus() {
-    return status;
+  public String getState() {
+    return state;
   }
 
   public String getRevision() {
@@ -81,16 +80,26 @@ public class BuildStatus {
       return this;
     }
 
+    /**
+     * The rootUrl of this Jenkins instance
+     * @param rootUrl
+     * @return
+     */
+    public Builder setRootUrl(String rootUrl) {
+        this.rootUrl = rootUrl;
+        return this;
+    }
+
     public BuildStatus build(){
       BuildStatus buildStatus = new BuildStatus();
 
-      buildStatus.name = build.getDisplayName();
-      buildStatus.key = build.getId();
+      buildStatus.name = build.getFullDisplayName();
+      buildStatus.key = build.getDisplayName();
 
       if(build.isBuilding()){
-        buildStatus.status = STATUS_IN_PROGRESS;
+        buildStatus.state = STATUS_IN_PROGRESS;
       } else {
-        buildStatus.status = build.getResult() == Result.SUCCESS ? STATUS_SUCCESSFULL : STATUS_FAILURE;
+        buildStatus.state = build.getResult() == Result.SUCCESS ? STATUS_SUCCESSFULL : STATUS_FAILURE;
       }
 
       if (rootUrl == null) {
@@ -110,11 +119,6 @@ public class BuildStatus {
       }
 
       return buildStatus;
-    }
-
-    public Builder setRootUrl(String rootUrl) {
-      this.rootUrl = rootUrl;
-      return this;
     }
   }
 }

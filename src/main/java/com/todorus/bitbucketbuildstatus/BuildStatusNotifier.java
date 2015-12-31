@@ -1,21 +1,21 @@
 package com.todorus.bitbucketbuildstatus;
+import com.todorus.bitbucketbuildstatus.control.BuildStatusClient;
+import com.todorus.bitbucketbuildstatus.control.BuildStatusController;
+import com.todorus.bitbucketbuildstatus.control.RetrofitAdapter;
+import com.todorus.bitbucketbuildstatus.model.BuildStatus;
 import hudson.Launcher;
 import hudson.Extension;
-import hudson.FilePath;
-import hudson.model.Descriptor;
+import hudson.model.*;
+import hudson.plugins.git.Revision;
+import hudson.plugins.git.util.BuildData;
 import hudson.tasks.*;
-import hudson.util.FormValidation;
-import hudson.model.AbstractProject;
-import hudson.model.Run;
-import hudson.model.TaskListener;
-import jenkins.tasks.SimpleBuildStep;
+import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
-import org.kohsuke.stapler.QueryParameter;
 
-import javax.servlet.ServletException;
 import java.io.IOException;
+import java.io.PrintStream;
 
 /**
  * Sample {@link Builder}.
@@ -25,7 +25,7 @@ import java.io.IOException;
  * {@link DescriptorImpl#newInstance(StaplerRequest)} is invoked
  * and a new {@link BuildStatusNotifier} is created. The created
  * instance is persisted to the project configuration XML by using
- * XStream, so this allows you to use instance fields (like {@link #name})
+ * XStream, so this allows you to use instance fields (like {@link #owner})
  * to remember the configuration.
  *
  * <p>
@@ -33,33 +33,79 @@ import java.io.IOException;
  *
  * @author Kohsuke Kawaguchi
  */
-public class BuildStatusNotifier extends Notifier implements SimpleBuildStep {
+public class BuildStatusNotifier extends Notifier {
 
-    private final String name;
+    private static final String TAG = "Bitbucket BuildStatus: ";
+
+    private final String owner;
+    private final String slug;
 
     // Fields in config.jelly must match the parameter names in the "DataBoundConstructor"
     @DataBoundConstructor
-    public BuildStatusNotifier(String name) {
-        this.name = name;
+    public BuildStatusNotifier(String owner, String slug) {
+        this.owner = owner;
+        this.slug = slug;
+    }
+
+    @Override
+    public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
+        PrintStream logger = listener.getLogger();
+
+        BuildData buildData = build.getAction(BuildData.class);
+        if (buildData == null) {
+            logger.println(TAG+"Could not get build data from build.");
+            return false;
+        }
+
+        Revision rev = buildData.getLastBuiltRevision();
+        if (rev == null) {
+            logger.println(TAG+"Could not get revision from build.");
+            return false;
+        }
+
+        String commitHash = rev.getSha1String();
+        if (commitHash == null) {
+            logger.println(TAG+"Could not get commit hash from build data.");
+            return false;
+        }
+
+        BuildStatus buildStatus = new BuildStatus.Builder()
+                .setRootUrl(Jenkins.getInstance().getRootUrl())
+                .setBuild(build)
+                .build();
+
+        BuildStatusClient client = RetrofitAdapter.getAdapter().create(BuildStatusClient.class);
+        RetrofitAdapter.setUsername(getDescriptor().getUsername());
+        RetrofitAdapter.setPassword(getDescriptor().getPassword());
+        BuildStatusController controller = new BuildStatusController(client);
+
+        String eOwner = build.getEnvironment(listener).expand(owner);
+        String eSlug  = build.getEnvironment(listener).expand(slug);
+
+        try {
+            controller.postStatus(buildStatus, eOwner, eSlug, commitHash);
+        } catch (Exception e){
+            logger.println(TAG+"could not post status to BitBucket");
+            logger.println(e);
+            return false;
+        }
+
+
+        return true;
     }
 
     /**
      * We'll use this from the <tt>config.jelly</tt>.
      */
-    public String getName() {
-        return name;
+    public String getOwner() {
+        return owner;
     }
 
-    @Override
-    public void perform(Run<?,?> build, FilePath workspace, Launcher launcher, TaskListener listener) {
-        // This is where you 'build' the project.
-        // Since this is a dummy, we just say 'hello world' and call that a build.
-
-        // This also shows how you can consult the global configuration of the builder
-        if (getDescriptor().getUseFrench())
-            listener.getLogger().println("Bonjour, "+name+"!");
-        else
-            listener.getLogger().println("Hello, "+name+"!");
+    /**
+     * We'll use this from the <tt>config.jelly</tt>.
+     */
+    public String getSlug() {
+        return slug;
     }
 
     // Overridden for better type safety.
@@ -75,56 +121,29 @@ public class BuildStatusNotifier extends Notifier implements SimpleBuildStep {
         return BuildStepMonitor.NONE;
     }
 
-    /**
-     * Descriptor for {@link BuildStatusNotifier}. Used as a singleton.
-     * The class is marked as public so that it can be accessed from views.
-     *
-     * <p>
-     * See <tt>src/main/resources/hudson/plugins/hello_world/HelloWorldBuilder/*.jelly</tt>
-     * for the actual HTML fragment for the configuration screen.
-     */
-    @Extension // This indicates to Jenkins that this is an implementation of an extension point.
+    @Override
+    public boolean needsToRunAfterFinalized() {
+        // Let the plugin run after the status of the build is finalized, else it will post a BuildStatus.STATUS_IN_PROGRESS state
+        return true;
+    }
+
+    @Extension
     public static final class DescriptorImpl extends BuildStepDescriptor<Publisher> {
-        /**
-         * To persist global configuration information,
-         * simply store it in a field and call save().
-         *
-         * <p>
-         * If you don't want fields to be persisted, use <tt>transient</tt>.
-         */
-        private boolean useFrench;
+
+        private String username;
+
+        private String password;
 
         /**
-         * In order to load the persisted global configuration, you have to 
+         * In order to load the persisted global configuration, you have to
          * call load() in the constructor.
          */
         public DescriptorImpl() {
             load();
         }
 
-        /**
-         * Performs on-the-fly validation of the form field 'name'.
-         *
-         * @param value
-         *      This parameter receives the value that the user has typed.
-         * @return
-         *      Indicates the outcome of the validation. This is sent to the browser.
-         *      <p>
-         *      Note that returning {@link FormValidation#error(String)} does not
-         *      prevent the form from being saved. It just means that a message
-         *      will be displayed to the user. 
-         */
-        public FormValidation doCheckName(@QueryParameter String value)
-                throws IOException, ServletException {
-            if (value.length() == 0)
-                return FormValidation.error("Please set a name");
-            if (value.length() < 4)
-                return FormValidation.warning("Isn't the name too short?");
-            return FormValidation.ok();
-        }
-
         public boolean isApplicable(Class<? extends AbstractProject> aClass) {
-            // Indicates that this builder can be used with all kinds of project types 
+            // Indicates that this builder can be used with all kinds of project types
             return true;
         }
 
@@ -132,29 +151,27 @@ public class BuildStatusNotifier extends Notifier implements SimpleBuildStep {
          * This human readable name is used in the configuration screen.
          */
         public String getDisplayName() {
-            return "Say hello world";
+            return "Post Build status to Bitbucket";
         }
 
         @Override
-        public boolean configure(StaplerRequest req, JSONObject formData) throws Descriptor.FormException {
-            // To persist global configuration information,
-            // set that to properties and call save().
-            useFrench = formData.getBoolean("useFrench");
-            // ^Can also use req.bindJSON(this, formData);
-            //  (easier when there are many fields; need set* methods for this, like setUseFrench)
+        public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
+            username = formData.getString("user");
+            password = formData.getString("password");
+
             save();
-            return super.configure(req,formData);
+
+            return super.configure(req, formData);
         }
 
-        /**
-         * This method returns true if the global configuration says we should speak French.
-         *
-         * The method name is bit awkward because global.jelly calls this method to determine
-         * the initial state of the checkbox by the naming convention.
-         */
-        public boolean getUseFrench() {
-            return useFrench;
+        public String getUsername() {
+            return username;
         }
+
+        public String getPassword() {
+            return password;
+        }
+
     }
 }
 
