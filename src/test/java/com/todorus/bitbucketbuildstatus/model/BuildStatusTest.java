@@ -29,7 +29,7 @@ public class BuildStatusTest {
   @Mock
   ChangeLogSet<TestEntry> changeLogSet;
 
-  String displayName;
+  String fullDisplayName;
   String buildId;
   String buildUrl;
   String rootUrl;
@@ -41,13 +41,13 @@ public class BuildStatusTest {
   public void setUp(){
     MockitoAnnotations.initMocks(this);
 
-    displayName = UUID.randomUUID().toString();
+    fullDisplayName = UUID.randomUUID().toString();
     buildId = UUID.randomUUID().toString();
     buildUrl = UUID.randomUUID().toString();
     rootUrl = UUID.randomUUID().toString();
 
-    stub(abstractBuild.getDisplayName()).toReturn(displayName);
-    stub(abstractBuild.getId()).toReturn(buildId);
+    stub(abstractBuild.getFullDisplayName()).toReturn(fullDisplayName);
+    stub(abstractBuild.getDisplayName()).toReturn(buildId);
     stub(abstractBuild.getUrl()).toReturn(buildUrl);
 
     changes = new ArrayList<TestEntry>();
@@ -72,10 +72,10 @@ public class BuildStatusTest {
             .build();
 
     assertEquals(lastEntry.getCommitId(), buildStatus.getRevision());
-    assertEquals(displayName, buildStatus.getName());
+    assertEquals(fullDisplayName, buildStatus.getName());
     assertEquals(buildId, buildStatus.getKey());
     assertEquals(rootUrl + buildUrl, buildStatus.getUrl());
-    assertEquals(BuildStatus.STATUS_IN_PROGRESS, buildStatus.getStatus());
+    assertEquals(BuildStatus.STATUS_IN_PROGRESS, buildStatus.getState());
   }
 
   @Test
@@ -89,10 +89,10 @@ public class BuildStatusTest {
             .build();
 
     assertEquals(lastEntry.getCommitId(), buildStatus.getRevision());
-    assertEquals(displayName, buildStatus.getName());
+    assertEquals(fullDisplayName, buildStatus.getName());
     assertEquals(buildId, buildStatus.getKey());
     assertEquals(rootUrl+buildUrl, buildStatus.getUrl());
-    assertEquals(BuildStatus.STATUS_SUCCESSFULL, buildStatus.getStatus());
+    assertEquals(BuildStatus.STATUS_SUCCESSFULL, buildStatus.getState());
   }
 
   @Test
@@ -106,10 +106,10 @@ public class BuildStatusTest {
             .build();
 
     assertEquals(lastEntry.getCommitId(), buildStatus.getRevision());
-    assertEquals(displayName, buildStatus.getName());
+    assertEquals(fullDisplayName, buildStatus.getName());
     assertEquals(buildId, buildStatus.getKey());
     assertEquals(rootUrl+buildUrl, buildStatus.getUrl());
-    assertEquals(BuildStatus.STATUS_FAILURE, buildStatus.getStatus());
+    assertEquals(BuildStatus.STATUS_FAILURE, buildStatus.getState());
   }
 
   private static class TestEntry extends ChangeLogSet.Entry {
