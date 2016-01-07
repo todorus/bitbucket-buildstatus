@@ -37,35 +37,33 @@ public class BuildStatusNotifier extends Notifier {
 
     private static final String TAG = "Bitbucket BuildStatus: ";
 
-    private final String owner;
-    private final String slug;
-
-    // Fields in config.jelly must match the parameter names in the "DataBoundConstructor"
-    @DataBoundConstructor
-    public BuildStatusNotifier(String owner, String slug) {
-        this.owner = owner;
-        this.slug = slug;
-    }
-
     @Override
     public boolean perform(AbstractBuild build, Launcher launcher, BuildListener listener) throws InterruptedException, IOException {
         PrintStream logger = listener.getLogger();
 
         BuildData buildData = build.getAction(BuildData.class);
         if (buildData == null) {
-            logger.println(TAG+"Could not get build data from build.");
+            logger.println(TAG+"Could not get build data from the build.");
             return false;
         }
 
+        String repoUrl = (String) buildData.getRemoteUrls().toArray()[0];
+        if(repoUrl == null){
+            logger.println(TAG+"Could not get the url for the bitbucket repository from the build data.");
+            return false;
+        }
+        String owner = RepoParamExtractor.getOwner(repoUrl);
+        String slug = RepoParamExtractor.getSlug(repoUrl);
+
         Revision rev = buildData.getLastBuiltRevision();
         if (rev == null) {
-            logger.println(TAG+"Could not get revision from build.");
+            logger.println(TAG+"Could not get revision from the build data.");
             return false;
         }
 
         String commitHash = rev.getSha1String();
         if (commitHash == null) {
-            logger.println(TAG+"Could not get commit hash from build data.");
+            logger.println(TAG+"Could not get commit hash from the build data.");
             return false;
         }
 
@@ -79,11 +77,8 @@ public class BuildStatusNotifier extends Notifier {
         RetrofitAdapter.setPassword(getDescriptor().getPassword());
         BuildStatusController controller = new BuildStatusController(client);
 
-        String eOwner = build.getEnvironment(listener).expand(owner);
-        String eSlug  = build.getEnvironment(listener).expand(slug);
-
         try {
-            controller.postStatus(buildStatus, eOwner, eSlug, commitHash);
+            controller.postStatus(buildStatus, owner, slug, commitHash);
         } catch (Exception e){
             logger.println(TAG+"could not post status to BitBucket");
             logger.println(e);
@@ -92,20 +87,6 @@ public class BuildStatusNotifier extends Notifier {
 
 
         return true;
-    }
-
-    /**
-     * We'll use this from the <tt>config.jelly</tt>.
-     */
-    public String getOwner() {
-        return owner;
-    }
-
-    /**
-     * We'll use this from the <tt>config.jelly</tt>.
-     */
-    public String getSlug() {
-        return slug;
     }
 
     // Overridden for better type safety.
@@ -156,7 +137,7 @@ public class BuildStatusNotifier extends Notifier {
 
         @Override
         public boolean configure(StaplerRequest req, JSONObject formData) throws FormException {
-            username = formData.getString("user");
+            username = formData.getString("username");
             password = formData.getString("password");
 
             save();
